@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net.Http.Json;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
@@ -325,7 +326,7 @@ app.MapPost("/updates/check", async (CollectorDb db) =>
         db.SetSetting("update_latest_version", result.Manifest.Version ?? "");
         db.SetSetting("update_latest_image", result.Manifest.Image ?? "");
         db.SetSetting("update_latest_notes", string.Join("\n", result.Manifest.Notes ?? Array.Empty<string>()));
-        db.SetSetting("update_available", IsNewerVersion(result.Manifest.Version, db.GetSetting("collector_version")) ? "true" : "false");
+        db.SetSetting("update_available", IsNewerVersion(result.Manifest.Version, AppInfo.Version) ? "true" : "false");
     }
     db.AddLog(result.Ok ? "INFO" : "ERROR", result.Message);
     return Results.Redirect("/updates");
@@ -351,7 +352,7 @@ app.MapPost("/updates/request", async (CollectorDb db, OdooClient client) =>
 
     var request = new UpdateRequest(
         DateTimeOffset.UtcNow,
-        db.GetSetting("collector_version"),
+        AppInfo.Version,
         db.GetSetting("update_latest_version"),
         image,
         db.GetSetting("docker_image_name"),
@@ -423,6 +424,8 @@ app.MapGet("/backups/export-local", (CollectorDb db) => Results.Text(db.ExportCo
 app.MapGet("/queue", (CollectorDb db) => Results.Content(Html.Layout("Queue", Html.Queue(db)), "text/html"));
 app.MapGet("/logs", (CollectorDb db) => Results.Content(Html.Layout("Logs", Html.Logs(db)), "text/html"));
 app.MapGet("/api/status", (CollectorDb db) => Results.Json(db.Status()));
+app.MapGet("/api/about", () => Results.Json(AppInfo.AsObject()));
+app.MapGet("/about", () => Results.Content(Html.Layout("About", Html.About()), "text/html"));
 
 app.Run();
 
@@ -443,7 +446,7 @@ static async Task<UpdateCheckResult> CheckForUpdatesAsync(CollectorDb db)
         {
             return new UpdateCheckResult(false, "The update manifest was returned but did not include a version.", manifest);
         }
-        var current = db.GetSetting("collector_version");
+        var current = AppInfo.Version;
         var available = IsNewerVersion(manifest.Version, current);
         var message = available
             ? $"Update available. Current: {current}. Latest: {manifest.Version}. Image: {manifest.Image}."
@@ -479,6 +482,48 @@ static double? ParseNullableDouble(string? text)
     return null;
 }
 
+
+public static class AppInfo
+{
+    public static string Version => FirstNonEmpty(
+        Environment.GetEnvironmentVariable("APP_VERSION"),
+        Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0],
+        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3),
+        "dev");
+
+    public static string BuildDate => FirstNonEmpty(
+        Environment.GetEnvironmentVariable("APP_BUILD_DATE"),
+        "unknown");
+
+    public static string Commit => FirstNonEmpty(
+        Environment.GetEnvironmentVariable("APP_COMMIT"),
+        "unknown");
+
+    public static string Image => FirstNonEmpty(
+        Environment.GetEnvironmentVariable("APP_IMAGE"),
+        "unknown");
+
+    public static object AsObject() => new
+    {
+        product = "Plant Floor Collector",
+        version = Version,
+        buildDate = BuildDate,
+        commit = Commit,
+        image = Image,
+        runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
+        os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
+        processStartTime = System.Diagnostics.Process.GetCurrentProcess().StartTime.ToString("O")
+    };
+
+    private static string FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value)) return value.Trim();
+        }
+        return string.Empty;
+    }
+}
 
 public sealed record FolderStatus(string Name, string Path, bool Exists, bool Writable, string Message);
 
@@ -582,7 +627,10 @@ CREATE TABLE IF NOT EXISTS machine_status_cache(machine_code TEXT PRIMARY KEY,st
         SetDefault("simulator_interval", "5");
         SetDefault("odoo_push_interval", "10");
         SetDefault("retention_days", "30");
-        SetDefault("collector_version", "1.4.5");
+        SetSetting("collector_version", AppInfo.Version);
+        SetSetting("build_date", AppInfo.BuildDate);
+        SetSetting("git_commit", AppInfo.Commit);
+        SetSetting("docker_image", AppInfo.Image);
         SetDefault("update_manifest_url", "http://localhost:8081/plant-floor-collector/version.json");
         SetDefault("docker_image_name", "plant-floor-collector");
         SetDefault("auto_backup_before_update", "true");
@@ -1179,7 +1227,7 @@ ORDER BY tv.machine_code,tv.tag";
         var payload = new
         {
             format = "plant_floor_collector_config",
-            version = "1.4.2",
+            version = AppInfo.Version,
             exported_at = DateTimeOffset.UtcNow,
             collector_code = CollectorCode(),
             settings = new Dictionary<string, string>
@@ -1764,7 +1812,7 @@ public sealed record UpdateRequest(DateTimeOffset RequestedAt, string CurrentVer
 public static class Html
 {
     public static string Layout(string title, string body) => $"""
-<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>{E(title)} - Plant Floor Collector</title><link rel='stylesheet' href='/style.css'></head><body><aside><h2>Plant Floor<br>Collector</h2><a href='/'>Dashboard</a><a href='/machines'>Machines</a><a href='/tags'>Live Tags</a><a href='/mappings'>Tag Mappings</a><a href='/drivers'>Drivers</a><a href='/diagnostics'>Diagnostics</a><a href='/odoo'>Odoo</a><a href='/backups'>Backups</a><a href='/updates'>Updates</a><a href='/settings'>Settings</a><a href='/queue'>Queue</a><a href='/logs'>Logs</a></aside><main><h1>{E(title)}</h1>{body}</main></body></html>
+<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>{E(title)} - Plant Floor Collector</title><link rel='stylesheet' href='/style.css'></head><body><aside><h2>Plant Floor<br>Collector</h2><a href='/'>Dashboard</a><a href='/machines'>Machines</a><a href='/tags'>Live Tags</a><a href='/mappings'>Tag Mappings</a><a href='/drivers'>Drivers</a><a href='/diagnostics'>Diagnostics</a><a href='/odoo'>Odoo</a><a href='/backups'>Backups</a><a href='/updates'>Updates</a><a href='/settings'>Settings</a><a href='/about'>About</a><a href='/queue'>Queue</a><a href='/logs'>Logs</a></aside><main><h1>{E(title)}</h1>{body}</main></body></html>
 """;
 
     public static string Dashboard(CollectorDb db)
@@ -1840,14 +1888,22 @@ public static class Html
     {
         var driverRows = string.Join("", db.GetDrivers().Select(d => $"<tr><td>{E(d.Name)}</td><td>{E(d.DriverType)}</td><td>{E(d.Status)}</td><td>{d.LastScanMs} ms</td><td>{E(d.LastError)}</td><td>{E(d.LastUpdate)}</td></tr>"));
         var folderRows = string.Join("", db.FolderStatuses().Select(f => $"<tr><td>{E(f.Name)}</td><td><code>{E(f.Path)}</code></td><td>{f.Exists}</td><td>{f.Writable}</td><td>{E(f.Message)}</td></tr>"));
-        return $"<div class='cards'><div class='card'><b>Odoo Enabled</b><span>{E(db.GetSetting("odoo_enabled"))}</span></div><div class='card'><b>Queue Depth</b><span>{db.QueueRows().Count}</span></div><div class='card'><b>Live Tags</b><span>{db.LatestTags().Count}</span></div><div class='card'><b>Drivers</b><span>{db.GetDrivers().Count}</span></div></div><h2>Runtime Folders</h2><table><tr><th>Name</th><th>Path</th><th>Exists</th><th>Writable</th><th>Message</th></tr>{folderRows}</table><h2>Driver Diagnostics</h2><table><tr><th>Name</th><th>Type</th><th>Status</th><th>Latency</th><th>Last Message</th><th>Updated</th></tr>{driverRows}</table><h2>Recent Logs</h2>" + Logs(db);
+        return $"<div class='cards'><div class='card'><b>Version</b><span>{E(AppInfo.Version)}</span></div><div class='card'><b>Odoo Enabled</b><span>{E(db.GetSetting("odoo_enabled"))}</span></div><div class='card'><b>Queue Depth</b><span>{db.QueueRows().Count}</span></div><div class='card'><b>Live Tags</b><span>{db.LatestTags().Count}</span></div><div class='card'><b>Drivers</b><span>{db.GetDrivers().Count}</span></div></div><h2>Runtime Folders</h2><table><tr><th>Name</th><th>Path</th><th>Exists</th><th>Writable</th><th>Message</th></tr>{folderRows}</table><h2>Driver Diagnostics</h2><table><tr><th>Name</th><th>Type</th><th>Status</th><th>Latency</th><th>Last Message</th><th>Updated</th></tr>{driverRows}</table><h2>Recent Logs</h2>" + Logs(db);
     }
 
+
+
+    public static string About()
+    {
+        return $"<div class='cards'><div class='card'><b>Version</b><span>{E(AppInfo.Version)}</span></div><div class='card'><b>Build Date</b><span>{E(AppInfo.BuildDate)}</span></div><div class='card'><b>Commit</b><span>{E(AppInfo.Commit)}</span></div></div>" +
+               $"<div class='panel'><h2>Running Image</h2><p><code>{E(AppInfo.Image)}</code></p><p class='muted'>This page reads runtime build metadata from the running container/assembly, not from the local SQLite settings database.</p></div>" +
+               $"<div class='panel'><h2>API</h2><p><a href='/api/about'>/api/about</a></p><p><a href='/api/status'>/api/status</a></p></div>";
+    }
 
     public static string Updates(CollectorDb db)
     {
         var feedback = Feedback(db, "update_last");
-        var current = E(db.GetSetting("collector_version"));
+        var current = E(AppInfo.Version);
         var latest = E(db.GetSetting("update_latest_version"));
         var image = E(db.GetSetting("update_latest_image"));
         var notes = E(db.GetSetting("update_latest_notes"));

@@ -3,6 +3,10 @@
 #   docker compose up -d --build
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+ARG APP_VERSION=dev
+ARG APP_COMMIT=unknown
+ARG APP_BUILD_DATE=unknown
+ARG APP_IMAGE=unknown
 WORKDIR /src
 
 COPY src/PlantFloorCollector/PlantFloorCollector.csproj ./src/PlantFloorCollector/
@@ -12,14 +16,24 @@ COPY src/PlantFloorCollector ./src/PlantFloorCollector
 RUN dotnet publish ./src/PlantFloorCollector/PlantFloorCollector.csproj \
     -c Release \
     -o /app/publish \
-    /p:UseAppHost=false
+    /p:UseAppHost=false \
+    /p:Version=$APP_VERSION \
+    /p:InformationalVersion=$APP_VERSION+$APP_COMMIT
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+ARG APP_VERSION=dev
+ARG APP_COMMIT=unknown
+ARG APP_BUILD_DATE=unknown
+ARG APP_IMAGE=unknown
 WORKDIR /app
 RUN mkdir -p /app/config /app/data /app/logs /app/backups /app/drivers /app/certs /app/temp
 COPY --from=build /app/publish .
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://0.0.0.0:8080
+ENV APP_VERSION=$APP_VERSION
+ENV APP_COMMIT=$APP_COMMIT
+ENV APP_BUILD_DATE=$APP_BUILD_DATE
+ENV APP_IMAGE=$APP_IMAGE
 ENV Collector__DatabasePath=/app/data/plant_floor_collector.db
 ENV Collector__ConfigPath=/app/config
 ENV Collector__DataPath=/app/data

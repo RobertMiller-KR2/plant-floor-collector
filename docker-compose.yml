@@ -3,6 +3,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-local}
+        APP_COMMIT: ${APP_COMMIT:-local}
+        APP_BUILD_DATE: ${APP_BUILD_DATE:-local}
+        APP_IMAGE: plant-floor-collector:latest
     image: plant-floor-collector:latest
     container_name: plant-floor-collector
     restart: unless-stopped
