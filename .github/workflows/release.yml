@@ -162,9 +162,9 @@ jobs:
         if: ${{ steps.vars.outputs.upload_to_godaddy == 'true' }}
         uses: wlixcc/SFTP-Deploy-Action@v1.2.5
         with:
-          username: ${{ secrets.GODADDY_SFTP_USER }}
-          server: ${{ secrets.GODADDY_SFTP_HOST }}
-          password: ${{ secrets.GODADDY_SFTP_PASSWORD }}
+          username: ${{ secrets.GODADDY_USERNAME }}
+          server: ${{ secrets.GODADDY_HOST }}
+          password: ${{ secrets.GODADDY_PASSWORD }}
           port: ${{ secrets.GODADDY_SFTP_PORT || 22 }}
           local_path: './releases/*'
           remote_path: ${{ secrets.GODADDY_REMOTE_PATH }}
