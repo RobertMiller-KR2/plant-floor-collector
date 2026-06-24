@@ -3,10 +3,10 @@
 #   docker compose up -d --build
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-ARG APP_VERSION=dev
+ARG APP_VERSION=0.0.0
 ARG APP_COMMIT=unknown
 ARG APP_BUILD_DATE=unknown
-ARG APP_IMAGE=unknown
+ARG APP_IMAGE=plant-floor-collector:local
 WORKDIR /src
 
 COPY src/PlantFloorCollector/PlantFloorCollector.csproj ./src/PlantFloorCollector/
@@ -17,8 +17,8 @@ RUN dotnet publish ./src/PlantFloorCollector/PlantFloorCollector.csproj \
     -c Release \
     -o /app/publish \
     /p:UseAppHost=false \
-    /p:Version=$APP_VERSION \
-    /p:InformationalVersion=$APP_VERSION+$APP_COMMIT
+    /p:Version=${APP_VERSION} \
+    "/p:InformationalVersion=${APP_VERSION}+${APP_COMMIT}"
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 ARG APP_VERSION=dev
