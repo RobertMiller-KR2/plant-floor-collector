@@ -1,0 +1,15 @@
+[Unit]
+Description=KR2 Plant Floor Collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/plantfloorcollector
+ExecStart=/opt/plantfloorcollector/PlantFloorCollector
+Restart=always
+RestartSec=10
+User=plantfloor
+Environment=ASPNETCORE_URLS=http://0.0.0.0:8080
+
+[Install]
+WantedBy=multi-user.target

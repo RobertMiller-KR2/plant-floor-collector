@@ -1,0 +1,57 @@
+services:
+  plant-floor-collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: plant-floor-collector:latest
+    container_name: plant-floor-collector
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - pfc_config:/app/config
+      - pfc_database:/app/data
+      - pfc_logs:/app/logs
+      - pfc_backups:/app/backups
+      - pfc_drivers:/app/drivers
+      - pfc_certificates:/app/certs
+      - pfc_temp:/app/temp
+    environment:
+      - ASPNETCORE_URLS=http://0.0.0.0:8080
+      - Collector__DatabasePath=/app/data/plant_floor_collector.db
+      - Collector__ConfigPath=/app/config
+      - Collector__DataPath=/app/data
+      - Collector__LogsPath=/app/logs
+      - Collector__BackupsPath=/app/backups
+      - Collector__DriversPath=/app/drivers
+      - Collector__CertificatesPath=/app/certs
+      - Collector__TempPath=/app/temp
+
+  plant-floor-updater:
+    build:
+      context: ./updater
+      dockerfile: Dockerfile
+    container_name: plant-floor-updater
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - pfc_database:/data
+      - pfc_temp:/temp
+    environment:
+      - REQUEST_FILE=/data/update-request.json
+      - COLLECTOR_CONTAINER=plant-floor-collector
+      - COLLECTOR_PORT=8080
+      - DATA_VOLUME=${COMPOSE_PROJECT_NAME:-plant_floor_collector}_pfc_database
+      - DATABASE_PATH=/app/data/plant_floor_collector.db
+      - POLL_SECONDS=10
+    depends_on:
+      - plant-floor-collector
+
+volumes:
+  pfc_config:
+  pfc_database:
+  pfc_logs:
+  pfc_backups:
+  pfc_drivers:
+  pfc_certificates:
+  pfc_temp:

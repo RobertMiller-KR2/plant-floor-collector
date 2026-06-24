@@ -1,0 +1,165 @@
+name: Plant Floor Collector Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, for example 1.4.7
+        required: true
+      manifest_base_url:
+        description: Public base URL where version.json will be hosted
+        required: true
+        default: https://yourdomain.com/plant-floor-collector
+      release_base_url:
+        description: Public base URL where release ZIPs will be hosted
+        required: true
+        default: https://yourdomain.com/plant-floor-collector/releases
+      upload_to_godaddy:
+        description: Upload version.json and release ZIP to GoDaddy via SFTP
+        required: true
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+  push:
+    tags:
+      - 'collector-v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: plant-floor-collector
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve release variables
+        id: vars
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+            MANIFEST_BASE_URL="${{ github.event.inputs.manifest_base_url }}"
+            RELEASE_BASE_URL="${{ github.event.inputs.release_base_url }}"
+            UPLOAD_TO_GODADDY="${{ github.event.inputs.upload_to_godaddy }}"
+          else
+            VERSION="${GITHUB_REF_NAME#collector-v}"
+            MANIFEST_BASE_URL="https://yourdomain.com/plant-floor-collector"
+            RELEASE_BASE_URL="https://yourdomain.com/plant-floor-collector/releases"
+            UPLOAD_TO_GODADDY="false"
+          fi
+
+          OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          REGISTRY="ghcr.io/${OWNER}"
+          IMAGE="${REGISTRY}/${IMAGE_NAME}:${VERSION}"
+          IMAGE_LATEST="${REGISTRY}/${IMAGE_NAME}:latest"
+          ZIP_NAME="plant_floor_collector_v${VERSION//./_}_docker.zip"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "registry=${REGISTRY}" >> "$GITHUB_OUTPUT"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "image_latest=${IMAGE_LATEST}" >> "$GITHUB_OUTPUT"
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "manifest_base_url=${MANIFEST_BASE_URL}" >> "$GITHUB_OUTPUT"
+          echo "release_base_url=${RELEASE_BASE_URL}" >> "$GITHUB_OUTPUT"
+          echo "upload_to_godaddy=${UPLOAD_TO_GODADDY}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore and build
+        shell: bash
+        run: |
+          dotnet restore src/PlantFloorCollector/PlantFloorCollector.csproj
+          dotnet build src/PlantFloorCollector/PlantFloorCollector.csproj -c Release --no-restore
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ steps.vars.outputs.image }}
+            ${{ steps.vars.outputs.image_latest }}
+          labels: |
+            org.opencontainers.image.title=Plant Floor Collector
+            org.opencontainers.image.version=${{ steps.vars.outputs.version }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Generate update manifest
+        shell: bash
+        run: |
+          mkdir -p releases
+          cat > releases/version.json <<JSON
+          {
+            "product": "Plant Floor Collector",
+            "version": "${{ steps.vars.outputs.version }}",
+            "image": "${{ steps.vars.outputs.image }}",
+            "releaseDate": "$(date -u +%Y-%m-%d)",
+            "downloadUrl": "${{ steps.vars.outputs.release_base_url }}/${{ steps.vars.outputs.zip_name }}",
+            "notesUrl": "${{ github.server_url }}/${{ github.repository }}/releases/tag/collector-v${{ steps.vars.outputs.version }}",
+            "notes": [
+              "Docker image published to GHCR",
+              "Release ZIP and update manifest generated automatically"
+            ]
+          }
+          JSON
+
+      - name: Create release ZIP
+        shell: bash
+        run: |
+          mkdir -p releases/package
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='bin' \
+            --exclude='obj' \
+            --exclude='releases/package' \
+            --exclude='releases/*.zip' \
+            ./ releases/package/
+          cd releases/package
+          zip -qr "../${{ steps.vars.outputs.zip_name }}" .
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: collector-v${{ steps.vars.outputs.version }}
+          name: Plant Floor Collector ${{ steps.vars.outputs.version }}
+          draft: false
+          prerelease: false
+          files: |
+            releases/${{ steps.vars.outputs.zip_name }}
+            releases/version.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload manifest and ZIP to GoDaddy
+        if: ${{ steps.vars.outputs.upload_to_godaddy == 'true' }}
+        uses: wlixcc/SFTP-Deploy-Action@v1.2.5
+        with:
+          username: ${{ secrets.GODADDY_SFTP_USER }}
+          server: ${{ secrets.GODADDY_SFTP_HOST }}
+          password: ${{ secrets.GODADDY_SFTP_PASSWORD }}
+          port: ${{ secrets.GODADDY_SFTP_PORT || 22 }}
+          local_path: './releases/*'
+          remote_path: ${{ secrets.GODADDY_REMOTE_PATH }}
+          sftp_only: true

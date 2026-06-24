@@ -1,0 +1,12 @@
+{
+  "version": "1.4.4",
+  "image": "plant-floor-collector:1.4.4",
+  "released": "2026-06-23",
+  "notes": [
+    "Adds Updates page in the collector UI",
+    "Adds update manifest checking",
+    "Adds backup-before-update option",
+    "Adds Docker updater sidecar request workflow",
+    "Preserves /app/data collector configuration volume during updates"
+  ]
+}

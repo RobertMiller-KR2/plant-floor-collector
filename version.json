@@ -1,0 +1,13 @@
+{
+  "product": "Plant Floor Collector",
+  "version": "1.4.6",
+  "image": "ghcr.io/robertmiller-kr2/plant-floor-collector:1.4.6",
+  "latestImage": "ghcr.io/robertmiller-kr2/plant-floor-collector:latest",
+  "releaseDate": "2026-06-24",
+  "downloadUrl": "https://yourdomain.com/plant-floor-collector/releases/plant_floor_collector_v1_4_6_docker.zip",
+  "notes": [
+    "Automated release builder added",
+    "Build, tag, and push Docker images",
+    "Generate GoDaddy-compatible update manifest"
+  ]
+}

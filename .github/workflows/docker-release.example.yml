@@ -1,0 +1,76 @@
+name: Plant Floor Collector Docker Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, for example 1.4.6
+        required: true
+      manifest_base_url:
+        description: Public manifest base URL
+        required: false
+        default: https://yourdomain.com/plant-floor-collector
+      release_base_url:
+        description: Public release download base URL
+        required: false
+        default: https://yourdomain.com/plant-floor-collector/releases
+  push:
+    tags:
+      - 'collector-v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Resolve version
+        id: vars
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#collector-v}"
+          fi
+          OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "registry=ghcr.io/$OWNER" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build release
+        run: |
+          chmod +x tools/release/build-release.sh
+          ./tools/release/build-release.sh \
+            --version "${{ steps.vars.outputs.version }}" \
+            --registry "${{ steps.vars.outputs.registry }}" \
+            --manifest-base-url "${{ github.event.inputs.manifest_base_url || 'https://yourdomain.com/plant-floor-collector' }}" \
+            --release-base-url "${{ github.event.inputs.release_base_url || 'https://yourdomain.com/plant-floor-collector/releases' }}" \
+            --push
+
+      - name: Upload GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: collector-v${{ steps.vars.outputs.version }}
+          name: Plant Floor Collector ${{ steps.vars.outputs.version }}
+          files: |
+            releases/*.zip
+            releases/version.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
