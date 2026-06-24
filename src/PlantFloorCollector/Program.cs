@@ -1460,8 +1460,14 @@ public sealed class SimulatorWorker(IServiceProvider sp, IConfiguration cfg) : B
                 {
                     db.SaveTag(machine.Code, item.Tag, item.Value, item.Quality);
                 }
-                var status = generated.FirstOrDefault(x => x.Tag.Equals("Status", StringComparison.OrdinalIgnoreCase)).Value?.ToString() ?? "running";
-                var alarm = generated.FirstOrDefault(x => x.Role.Equals("alarm", StringComparison.OrdinalIgnoreCase)).Value?.ToString() ?? "False";
+                var statusItem = generated.FirstOrDefault(x =>
+    string.Equals(x.Tag, "Status", StringComparison.OrdinalIgnoreCase));
+
+var alarmItem = generated.FirstOrDefault(x =>
+    string.Equals(x.Role, "alarm", StringComparison.OrdinalIgnoreCase));
+
+var status = statusItem?.Value?.ToString() ?? "running";
+var alarm = alarmItem?.Value?.ToString() ?? "False";
                 var alarmStatus = string.Equals(alarm, "True", StringComparison.OrdinalIgnoreCase) ? "alarm" : "normal";
                 var tagPayload = generated.Select(x => new { tag = x.Tag, value = x.Value, quality = x.Quality, data_type = x.DataType, role = x.Role, unit = x.Unit }).ToArray();
                 var machinePayload = db.BuildIngestEnvelope(machine.Code, machine.Name, tagPayload, status, "connected", alarmStatus, "");
